@@ -324,6 +324,42 @@
                 <div class="copy-text-area" id="bspNamesText"></div>
                 <div id="bspNames"></div>
             </div>
+            <div class="data-section">
+                <h3>Technical Catalogs</h3>
+                <div class="copy-all">
+                    <button class="copy-btn" id="copyTechnicalCatalogs">Copy All Names</button>
+                    <span class="copy-success" id="copyTechnicalCatalogsSuccess">Copied!</span>
+                </div>
+                <div class="copy-text-area" id="technicalCatalogsText"></div>
+                <div id="technicalCatalogs"></div>
+            </div>
+            <div class="data-section">
+                <h3>Spaces</h3>
+                <div class="copy-all">
+                    <button class="copy-btn" id="copySpaces">Copy All Names</button>
+                    <span class="copy-success" id="copySpacesSuccess">Copied!</span>
+                </div>
+                <div class="copy-text-area" id="spacesText"></div>
+                <div id="spaces"></div>
+            </div>
+            <div class="data-section">
+                <h3>Pages</h3>
+                <div class="copy-all">
+                    <button class="copy-btn" id="copyPages">Copy All Names</button>
+                    <span class="copy-success" id="copyPagesSuccess">Copied!</span>
+                </div>
+                <div class="copy-text-area" id="pagesText"></div>
+                <div id="pages"></div>
+            </div>
+            <div class="data-section">
+                <h3>Related Apps</h3>
+                <div class="copy-all">
+                    <button class="copy-btn" id="copyRelatedApps">Copy All Fiori IDs</button>
+                    <span class="copy-success" id="copyRelatedAppsSuccess">Copied!</span>
+                </div>
+                <div class="copy-text-area" id="relatedAppsText"></div>
+                <div id="relatedApps"></div>
+            </div>
         </div>
     </div>
 
@@ -332,8 +368,21 @@
             const fioriId = document.getElementById('fioriId').value.trim();
             const releaseId = document.getElementById('releaseId').value.trim();
 
+            // Enhanced input validation
             if (!fioriId || !releaseId) {
                 showError('Please enter both Fiori App ID and Release ID');
+                return;
+            }
+
+            // Validate Fiori ID format (typically starts with F followed by numbers)
+            if (!/^F\d+$/.test(fioriId)) {
+                showError('Invalid Fiori ID format. It should start with F followed by numbers.');
+                return;
+            }
+
+            // Validate Release ID format (typically 5-6 characters)
+            if (!/^[A-Z0-9]{5,6}$/.test(releaseId)) {
+                showError('Invalid Release ID format. It should be 5-6 characters long.');
                 return;
             }
 
@@ -344,28 +393,57 @@
             document.getElementById('appInfoSection').style.display = 'none';
 
             try {
-                // Reset any existing copy event listeners to prevent duplicates
+                // Reset copy buttons
                 document.getElementById('copyTechnicalNames').replaceWith(document.getElementById('copyTechnicalNames').cloneNode(true));
                 document.getElementById('copyBusinessRoles').replaceWith(document.getElementById('copyBusinessRoles').cloneNode(true));
                 document.getElementById('copyBSPNames').replaceWith(document.getElementById('copyBSPNames').cloneNode(true));
+                document.getElementById('copyTechnicalCatalogs').replaceWith(document.getElementById('copyTechnicalCatalogs').cloneNode(true));
+                document.getElementById('copySpaces').replaceWith(document.getElementById('copySpaces').cloneNode(true));
+                document.getElementById('copyPages').replaceWith(document.getElementById('copyPages').cloneNode(true));
+                document.getElementById('copyRelatedApps').replaceWith(document.getElementById('copyRelatedApps').cloneNode(true));
+
+                // Add timeout to prevent infinite loading
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Request timed out after 30 seconds')), 30000);
+                });
 
                 // First fetch the main app details to check deprecation status
-                const appDetails = await fetchAppDetails(fioriId, releaseId);
-
-                // Display app details, including deprecation warning if applicable
+                const appDetails = await Promise.race([
+                    fetchAppDetails(fioriId, releaseId),
+                    timeoutPromise
+                ]);
                 displayAppInfo(appDetails);
 
-                // Fetch data from all three endpoints
-                const [technicalNameData, businessRoleData, bspNameData] = await Promise.all([
-                    fetchTechnicalNames(fioriId, releaseId),
-                    fetchBusinessRoleNames(fioriId, releaseId),
-                    fetchBSPNames(fioriId, releaseId)
+                // Fetch data from all endpoints with retry mechanism
+                const [
+                    technicalNameData,
+                    businessRoleData,
+                    bspNameData,
+                    technicalCatalogData,
+                    spacesData,
+                    pagesData,
+                    relatedAppsData
+                ] = await Promise.race([
+                    Promise.all([
+                        retryFetch(() => fetchTechnicalNames(fioriId, releaseId)),
+                        retryFetch(() => fetchBusinessRoleNames(fioriId, releaseId)),
+                        retryFetch(() => fetchBSPNames(fioriId, releaseId)),
+                        retryFetch(() => fetchTechnicalCatalogs(fioriId, releaseId)),
+                        retryFetch(() => fetchSpaces(fioriId, releaseId)),
+                        retryFetch(() => fetchPages(fioriId, releaseId)),
+                        retryFetch(() => fetchRelatedApps(fioriId, releaseId))
+                    ]),
+                    timeoutPromise
                 ]);
 
                 // Display the results
                 displayTechnicalNames(technicalNameData);
                 displayBusinessRoles(businessRoleData);
                 displayBSPNames(bspNameData);
+                displayTechnicalCatalogs(technicalCatalogData);
+                displaySpaces(spacesData);
+                displayPages(pagesData);
+                displayRelatedApps(relatedAppsData);
 
                 // Hide loading, show results
                 document.getElementById('loading').style.display = 'none';
@@ -375,6 +453,264 @@
                 document.getElementById('loading').style.display = 'none';
             }
         });
+
+        // Add retry mechanism for API calls
+        async function retryFetch(fetchFn, maxRetries = 3) {
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    return await fetchFn();
+                } catch (error) {
+                    if (i === maxRetries - 1) throw error;
+                    // Wait before retrying (exponential backoff)
+                    await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+                }
+            }
+        }
+
+        // Enhance error display
+        function showError(message) {
+            const errorElement = document.getElementById('error');
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+            // Auto-hide error after 5 seconds
+            setTimeout(() => {
+                errorElement.style.display = 'none';
+            }, 5000);
+        }
+
+        async function fetchTechnicalCatalogs(fioriId, releaseId) {
+            const url = `https://fioriappslibrary.hana.ondemand.com/sap/fix/externalViewer/services/SingleApp.xsodata/Details(inpfioriId='${fioriId}',inpreleaseId='${releaseId}',inpLanguage='EN',fioriId='${fioriId}',releaseId='${releaseId}')/SplitTechnicalCatalogs?$format=json`;
+
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            return data.d && data.d.results ? data.d.results : [];
+        }
+
+        function displayTechnicalCatalogs(technicalCatalogs) {
+            const container = document.getElementById('technicalCatalogs');
+            const textContainer = document.getElementById('technicalCatalogsText');
+            container.innerHTML = '';
+
+            if (technicalCatalogs.length === 0) {
+                container.innerHTML = '<p>No Technical Catalogs found</p>';
+                textContainer.textContent = '';
+                return;
+            }
+
+            // Create a list of just the catalog names for easy copying
+            const namesOnly = technicalCatalogs.map(item => item.TechincalCatalog);
+            textContainer.textContent = namesOnly.join('\n');
+            textContainer.style.display = 'block';
+
+            // Add copy button functionality
+            document.getElementById('copyTechnicalCatalogs').addEventListener('click', async () => {
+                const success = await copyToClipboard(namesOnly.join('\n'));
+                if (success) {
+                    const successIndicator = document.getElementById('copyTechnicalCatalogsSuccess');
+                    successIndicator.style.display = 'inline';
+                    setTimeout(() => { successIndicator.style.display = 'none'; }, 2000);
+                }
+            });
+
+            // Display detailed items
+            technicalCatalogs.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'data-item';
+
+                let html = `<p><strong>${item.TechincalCatalog}</strong></p>`;
+
+                if (item.TechincalCatalogDescription) {
+                    html += `<p class="data-item-details">Description: ${item.TechincalCatalogDescription}</p>`;
+                }
+
+                if (item.SystemAlias) {
+                    html += `<p class="data-item-details">System Alias: ${item.SystemAlias}</p>`;
+                }
+
+                div.innerHTML = html;
+                container.appendChild(div);
+            });
+        }
+
+        // Add this function to fetch related apps
+        async function fetchRelatedApps(fioriId, releaseId) {
+            const url = `https://fioriappslibrary.hana.ondemand.com/sap/fix/externalViewer/services/SingleApp.xsodata/Details(inpfioriId='${fioriId}',inpreleaseId='${releaseId}',inpLanguage='EN',fioriId='${fioriId}',releaseId='${releaseId}')/Related_Apps?$format=json`;
+
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            return data.d && data.d.results ? data.d.results : [];
+        }
+
+        // Add this function to display related apps
+        function displayRelatedApps(relatedApps) {
+            const container = document.getElementById('relatedApps');
+            const textContainer = document.getElementById('relatedAppsText');
+            container.innerHTML = '';
+
+            if (relatedApps.length === 0) {
+                container.innerHTML = '<p>No Related Apps found</p>';
+                textContainer.textContent = '';
+                return;
+            }
+
+            // Create a list of just the Fiori IDs for easy copying (excluding App Names as requested)
+            const idsOnly = relatedApps.map(item => item.FioriId);
+            textContainer.textContent = idsOnly.join('\n');
+            textContainer.style.display = 'block';
+
+            // Add copy button functionality
+            document.getElementById('copyRelatedApps').addEventListener('click', async () => {
+                const success = await copyToClipboard(idsOnly.join('\n'));
+                if (success) {
+                    const successIndicator = document.getElementById('copyRelatedAppsSuccess');
+                    successIndicator.style.display = 'inline';
+                    setTimeout(() => { successIndicator.style.display = 'none'; }, 2000);
+                }
+            });
+
+            // Display detailed items - showing both App Name and Fiori ID
+            relatedApps.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'data-item';
+
+                let html = `<p><strong>${item.FioriId}</strong></p>`;
+
+                if (item.AppName) {
+                    html += `<p class="data-item-details">App Name: ${item.AppName}</p>`;
+                }
+
+                if (item.relationType) {
+                    html += `<p class="data-item-details">Relation Type: ${item.relationType}</p>`;
+                }
+
+                div.innerHTML = html;
+                container.appendChild(div);
+            });
+        }
+
+        async function fetchSpaces(fioriId, releaseId) {
+            const url = `https://fioriappslibrary.hana.ondemand.com/sap/fix/externalViewer/services/SingleApp.xsodata/Details(inpfioriId='${fioriId}',inpreleaseId='${releaseId}',inpLanguage='EN',fioriId='${fioriId}',releaseId='${releaseId}')/SplitSpace?$format=json`;
+
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            return data.d && data.d.results ? data.d.results : [];
+        }
+
+        function displaySpaces(spaces) {
+            const container = document.getElementById('spaces');
+            const textContainer = document.getElementById('spacesText');
+            container.innerHTML = '';
+
+            if (spaces.length === 0) {
+                container.innerHTML = '<p>No Spaces found</p>';
+                textContainer.textContent = '';
+                return;
+            }
+
+            // Create a list of just the space names for easy copying
+            const namesOnly = spaces.map(item => item.SpaceName);
+            textContainer.textContent = namesOnly.join('\n');
+            textContainer.style.display = 'block';
+
+            // Add copy button functionality
+            document.getElementById('copySpaces').addEventListener('click', async () => {
+                const success = await copyToClipboard(namesOnly.join('\n'));
+                if (success) {
+                    const successIndicator = document.getElementById('copySpacesSuccess');
+                    successIndicator.style.display = 'inline';
+                    setTimeout(() => { successIndicator.style.display = 'none'; }, 2000);
+                }
+            });
+
+            // Display detailed items
+            spaces.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'data-item';
+
+                let html = `<p><strong>${item.SpaceName}</strong></p>`;
+
+                if (item.SpaceTitle) {
+                    html += `<p class="data-item-details">Title: ${item.SpaceTitle}</p>`;
+                }
+
+                if (item.SpaceDescription) {
+                    html += `<p class="data-item-details">Description: ${item.SpaceDescription}</p>`;
+                }
+
+                div.innerHTML = html;
+                container.appendChild(div);
+            });
+        }
+
+        async function fetchPages(fioriId, releaseId) {
+            const url = `https://fioriappslibrary.hana.ondemand.com/sap/fix/externalViewer/services/SingleApp.xsodata/Details(inpfioriId='${fioriId}',inpreleaseId='${releaseId}',inpLanguage='EN',fioriId='${fioriId}',releaseId='${releaseId}')/SplitPage?$format=json`;
+
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            return data.d && data.d.results ? data.d.results : [];
+        }
+
+        function displayPages(pages) {
+            const container = document.getElementById('pages');
+            const textContainer = document.getElementById('pagesText');
+            container.innerHTML = '';
+
+            if (pages.length === 0) {
+                container.innerHTML = '<p>No Pages found</p>';
+                textContainer.textContent = '';
+                return;
+            }
+
+            // Create a list of just the page names for easy copying
+            const namesOnly = pages.map(item => item.PageName);
+            textContainer.textContent = namesOnly.join('\n');
+            textContainer.style.display = 'block';
+
+            // Add copy button functionality
+            document.getElementById('copyPages').addEventListener('click', async () => {
+                const success = await copyToClipboard(namesOnly.join('\n'));
+                if (success) {
+                    const successIndicator = document.getElementById('copyPagesSuccess');
+                    successIndicator.style.display = 'inline';
+                    setTimeout(() => { successIndicator.style.display = 'none'; }, 2000);
+                }
+            });
+
+            // Display detailed items
+            pages.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'data-item';
+
+                let html = `<p><strong>${item.PageName}</strong></p>`;
+
+                if (item.PageTitle) {
+                    html += `<p class="data-item-details">Title: ${item.PageTitle}</p>`;
+                }
+
+                if (item.PageDescription) {
+                    html += `<p class="data-item-details">Description: ${item.PageDescription}</p>`;
+                }
+
+                div.innerHTML = html;
+                container.appendChild(div);
+            });
+        }
 
         async function fetchAppDetails(fioriId, releaseId) {
             const url = `https://fioriappslibrary.hana.ondemand.com/sap/fix/externalViewer/services/SingleApp.xsodata/Details(fioriId='${fioriId}',releaseId='${releaseId}',inpfioriId='${fioriId}',inpreleaseId='${releaseId}',inpLanguage='EN')?$format=json`;
@@ -662,14 +998,17 @@
             });
         }
 
-        function showError(message) {
-            const errorElement = document.getElementById('error');
-            errorElement.textContent = message;
-            errorElement.style.display = 'block';
-        }
-
         document.getElementById('fioriId').addEventListener('keypress', handleEnterKey);
         document.getElementById('releaseId').addEventListener('keypress', handleEnterKey);
+
+        // Add event listeners to convert input to uppercase
+        document.getElementById('fioriId').addEventListener('input', function(e) {
+            e.target.value = e.target.value.toUpperCase();
+        });
+        document.getElementById('releaseId').addEventListener('input', function(e) {
+            e.target.value = e.target.value.toUpperCase();
+        });
+
         function handleEnterKey(event) {
             if (event.key === 'Enter') {
                 event.preventDefault(); // Prevent default form submission
