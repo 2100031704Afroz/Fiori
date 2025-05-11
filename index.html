@@ -360,10 +360,20 @@
                 <div class="copy-text-area" id="relatedAppsText"></div>
                 <div id="relatedApps"></div>
             </div>
+            <div class="data-section">
+                <h3>Target Mappings</h3>
+                <div class="copy-all">
+                    <button class="copy-btn" id="copySemanticObjects">Copy All Objects</button>
+                    <span class="copy-success" id="copySemanticObjectsSuccess">Copied!</span>
+                </div>
+                <div class="copy-text-area" id="semanticObjectsText"></div>
+                <div id="semanticObjects"></div>
+            </div>
         </div>
     </div>
 
     <script>
+ 
         document.getElementById('fetchButton').addEventListener('click', async function () {
             const fioriId = document.getElementById('fioriId').value.trim();
             const releaseId = document.getElementById('releaseId').value.trim();
@@ -388,6 +398,7 @@
                 document.getElementById('copySpaces').replaceWith(document.getElementById('copySpaces').cloneNode(true));
                 document.getElementById('copyPages').replaceWith(document.getElementById('copyPages').cloneNode(true));
                 document.getElementById('copyRelatedApps').replaceWith(document.getElementById('copyRelatedApps').cloneNode(true));
+                document.getElementById('copySemanticObjects').replaceWith(document.getElementById('copySemanticObjects').cloneNode(true));
 
                 // Add timeout to prevent infinite loading
                 const timeoutPromise = new Promise((_, reject) => {
@@ -409,7 +420,8 @@
                     technicalCatalogData,
                     spacesData,
                     pagesData,
-                    relatedAppsData
+                    relatedAppsData,
+                    semanticObjectsData
                 ] = await Promise.race([
                     Promise.all([
                         retryFetch(() => fetchTechnicalNames(fioriId, releaseId)),
@@ -418,7 +430,8 @@
                         retryFetch(() => fetchTechnicalCatalogs(fioriId, releaseId)),
                         retryFetch(() => fetchSpaces(fioriId, releaseId)),
                         retryFetch(() => fetchPages(fioriId, releaseId)),
-                        retryFetch(() => fetchRelatedApps(fioriId, releaseId))
+                        retryFetch(() => fetchRelatedApps(fioriId, releaseId)),
+                        retryFetch(() => fetchSemanticObjects(fioriId, releaseId))
                     ]),
                     timeoutPromise
                 ]);
@@ -431,6 +444,7 @@
                 displaySpaces(spacesData);
                 displayPages(pagesData);
                 displayRelatedApps(relatedAppsData);
+                displaySemanticObjects(semanticObjectsData);
 
                 // Hide loading, show results
                 document.getElementById('loading').style.display = 'none';
@@ -441,7 +455,6 @@
             }
         });
 
-        // Add retry mechanism for API calls
         async function retryFetch(fetchFn, maxRetries = 3) {
             for (let i = 0; i < maxRetries; i++) {
                 try {
@@ -516,6 +529,68 @@
 
                 if (item.SystemAlias) {
                     html += `<p class="data-item-details">System Alias: ${item.SystemAlias}</p>`;
+                }
+
+                div.innerHTML = html;
+                container.appendChild(div);
+            });
+        }
+
+        // Add this function to fetch semantic objects
+        async function fetchSemanticObjects(fioriId, releaseId) {
+            const url = `https://fioriappslibrary.hana.ondemand.com/sap/fix/externalViewer/services/SingleApp.xsodata/Details(inpfioriId='${fioriId}',inpreleaseId='${releaseId}',inpLanguage='EN',fioriId='${fioriId}',releaseId='${releaseId}')/SplitAdditionalIntents?$format=json`;
+
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            return data.d && data.d.results ? data.d.results : [];
+        }
+
+        // Add this function to display semantic objects
+        function displaySemanticObjects(semanticObjects) {
+            const container = document.getElementById('semanticObjects');
+            const textContainer = document.getElementById('semanticObjectsText');
+            container.innerHTML = '';
+
+            if (semanticObjects.length === 0) {
+                container.innerHTML = '<p>No Semantic Objects found</p>';
+                textContainer.textContent = '';
+                return;
+            }
+
+            // Create a list of just the semantic object names for easy copying
+            const objectsOnly = semanticObjects.map(item => item.SemanticObject);
+            // Remove duplicates
+            const uniqueObjects = [...new Set(objectsOnly)];
+            textContainer.textContent = uniqueObjects.join('\n');
+            textContainer.style.display = 'block';
+
+            // Add copy button functionality
+            document.getElementById('copySemanticObjects').addEventListener('click', async () => {
+                const success = await copyToClipboard(uniqueObjects.join('\n'));
+                if (success) {
+                    const successIndicator = document.getElementById('copySemanticObjectsSuccess');
+                    successIndicator.style.display = 'inline';
+                    setTimeout(() => { successIndicator.style.display = 'none'; }, 2000);
+                }
+            });
+
+            // Display detailed items
+            semanticObjects.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'data-item';
+
+                let html = `<p><strong>${item.SemanticObject}</strong></p>`;
+
+                if (item.SemanticAction) {
+                    html += `<p class="data-item-details">Action: ${item.SemanticAction}</p>`;
+                }
+
+                if (item.MappingSignatureKeyVal) {
+                    html += `<p class="data-item-details">Parameters: ${item.MappingSignatureKeyVal}</p>`;
                 }
 
                 div.innerHTML = html;
@@ -989,10 +1064,10 @@
         document.getElementById('releaseId').addEventListener('keypress', handleEnterKey);
 
         // Add event listeners to convert input to uppercase
-        document.getElementById('fioriId').addEventListener('input', function(e) {
+        document.getElementById('fioriId').addEventListener('input', function (e) {
             e.target.value = e.target.value.toUpperCase();
         });
-        document.getElementById('releaseId').addEventListener('input', function(e) {
+        document.getElementById('releaseId').addEventListener('input', function (e) {
             e.target.value = e.target.value.toUpperCase();
         });
 
