@@ -368,21 +368,8 @@
             const fioriId = document.getElementById('fioriId').value.trim();
             const releaseId = document.getElementById('releaseId').value.trim();
 
-            // Enhanced input validation
             if (!fioriId || !releaseId) {
                 showError('Please enter both Fiori App ID and Release ID');
-                return;
-            }
-
-            // Validate Fiori ID format (typically starts with F followed by numbers)
-            if (!/^F\d+$/.test(fioriId)) {
-                showError('Invalid Fiori ID format. It should start with F followed by numbers.');
-                return;
-            }
-
-            // Validate Release ID format (typically 5-6 characters)
-            if (!/^[A-Z0-9]{5,6}$/.test(releaseId)) {
-                showError('Invalid Release ID format. It should be 5-6 characters long.');
                 return;
             }
 
