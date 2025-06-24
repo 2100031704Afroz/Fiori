@@ -369,6 +369,15 @@
                 <div class="copy-text-area" id="semanticObjectsText"></div>
                 <div id="semanticObjects"></div>
             </div>
+            <div class="data-section">
+                <h3>App Launchers</h3>
+                <div class="copy-all">
+                    <button class="copy-btn" id="copyAppLaunchers">Copy All Names & Statuses</button>
+                    <span class="copy-success" id="copyAppLaunchersSuccess">Copied!</span>
+                </div>
+                <div class="copy-text-area" id="appLaunchersText"></div>
+                <div id="appLaunchers"></div>
+            </div>
         </div>
     </div>
 
@@ -399,6 +408,7 @@
                 document.getElementById('copyPages').replaceWith(document.getElementById('copyPages').cloneNode(true));
                 document.getElementById('copyRelatedApps').replaceWith(document.getElementById('copyRelatedApps').cloneNode(true));
                 document.getElementById('copySemanticObjects').replaceWith(document.getElementById('copySemanticObjects').cloneNode(true));
+                document.getElementById('copyAppLaunchers').replaceWith(document.getElementById('copyAppLaunchers').cloneNode(true));
 
                 // Add timeout to prevent infinite loading
                 const timeoutPromise = new Promise((_, reject) => {
@@ -421,7 +431,8 @@
                     spacesData,
                     pagesData,
                     relatedAppsData,
-                    semanticObjectsData
+                    semanticObjectsData,
+                    appLaunchersData
                 ] = await Promise.race([
                     Promise.all([
                         retryFetch(() => fetchTechnicalNames(fioriId, releaseId)),
@@ -431,7 +442,8 @@
                         retryFetch(() => fetchSpaces(fioriId, releaseId)),
                         retryFetch(() => fetchPages(fioriId, releaseId)),
                         retryFetch(() => fetchRelatedApps(fioriId, releaseId)),
-                        retryFetch(() => fetchSemanticObjects(fioriId, releaseId))
+                        retryFetch(() => fetchSemanticObjects(fioriId, releaseId)),
+                        retryFetch(() => fetchAppLaunchers(fioriId, releaseId))
                     ]),
                     timeoutPromise
                 ]);
@@ -445,6 +457,7 @@
                 displayPages(pagesData);
                 displayRelatedApps(relatedAppsData);
                 displaySemanticObjects(semanticObjectsData);
+                displayAppLaunchers(appLaunchersData);
 
                 // Hide loading, show results
                 document.getElementById('loading').style.display = 'none';
@@ -1049,6 +1062,58 @@
                     html += `<p class="data-item-details">UI5 Component ID: ${bsp.SAPUI5ComponentId}</p>`;
                 }
 
+                div.innerHTML = html;
+                container.appendChild(div);
+            });
+        }
+
+        async function fetchAppLaunchers(fioriId, releaseId) {
+            const url = `https://fioriappslibrary.hana.ondemand.com/sap/fix/externalViewer/services/SingleApp.xsodata/Details(inpfioriId='${fioriId}',inpreleaseId='${releaseId}',inpLanguage='EN',fioriId='${fioriId}',releaseId='${releaseId}')/SplitApplauncher?$format=json`;
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+            const data = await response.json();
+            return data.d && data.d.results ? data.d.results : [];
+        }
+
+        function displayAppLaunchers(appLaunchers) {
+            const container = document.getElementById('appLaunchers');
+            const textContainer = document.getElementById('appLaunchersText');
+            container.innerHTML = '';
+
+            if (appLaunchers.length === 0) {
+                container.innerHTML = '<p>No App Launchers found</p>';
+                textContainer.textContent = '';
+                return;
+            }
+
+            // Create a list of Title-Subtitle : Status for easy copying
+            const keyValuePairs = appLaunchers.map(item => {
+                let name = item.Title || '';
+                if (item.Subtitle) name += '-' + item.Subtitle;
+                return `${name} : ${item.Information}`;
+            });
+            textContainer.textContent = keyValuePairs.join('\n');
+            textContainer.style.display = 'block';
+
+            // Add copy button functionality
+            document.getElementById('copyAppLaunchers').addEventListener('click', async () => {
+                const success = await copyToClipboard(keyValuePairs.join('\n'));
+                if (success) {
+                    const successIndicator = document.getElementById('copyAppLaunchersSuccess');
+                    successIndicator.style.display = 'inline';
+                    setTimeout(() => { successIndicator.style.display = 'none'; }, 2000);
+                }
+            });
+
+            // Display detailed items as Title-Subtitle : Status
+            appLaunchers.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'data-item';
+                let name = item.Title || '';
+                if (item.Subtitle) name += '-' + item.Subtitle;
+                let html = `<p><strong>${name}</strong> : <strong>${item.Information || ''}</strong></p>`;
                 div.innerHTML = html;
                 container.appendChild(div);
             });
