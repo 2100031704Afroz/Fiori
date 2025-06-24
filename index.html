@@ -382,7 +382,6 @@
     </div>
 
     <script>
- 
         document.getElementById('fetchButton').addEventListener('click', async function () {
             const fioriId = document.getElementById('fioriId').value.trim();
             const releaseId = document.getElementById('releaseId').value.trim();
@@ -392,14 +391,12 @@
                 return;
             }
 
-            // Show loading, hide results and error
             document.getElementById('loading').style.display = 'block';
             document.getElementById('results').style.display = 'none';
             document.getElementById('error').style.display = 'none';
             document.getElementById('appInfoSection').style.display = 'none';
 
             try {
-                // Reset copy buttons
                 document.getElementById('copyTechnicalNames').replaceWith(document.getElementById('copyTechnicalNames').cloneNode(true));
                 document.getElementById('copyBusinessRoles').replaceWith(document.getElementById('copyBusinessRoles').cloneNode(true));
                 document.getElementById('copyBSPNames').replaceWith(document.getElementById('copyBSPNames').cloneNode(true));
@@ -410,56 +407,41 @@
                 document.getElementById('copySemanticObjects').replaceWith(document.getElementById('copySemanticObjects').cloneNode(true));
                 document.getElementById('copyAppLaunchers').replaceWith(document.getElementById('copyAppLaunchers').cloneNode(true));
 
-                // Add timeout to prevent infinite loading
                 const timeoutPromise = new Promise((_, reject) => {
                     setTimeout(() => reject(new Error('Request timed out after 30 seconds')), 30000);
                 });
 
-                // First fetch the main app details to check deprecation status
+                // Fetch and display app details immediately
                 const appDetails = await Promise.race([
-                    fetchAppDetails(fioriId, releaseId),
+                    cachedFetch('appDetails', () => fetchAppDetails(fioriId, releaseId), fioriId, releaseId),
                     timeoutPromise
                 ]);
                 displayAppInfo(appDetails);
 
-                // Fetch data from all endpoints with retry mechanism
-                const [
-                    technicalNameData,
-                    businessRoleData,
-                    bspNameData,
-                    technicalCatalogData,
-                    spacesData,
-                    pagesData,
-                    relatedAppsData,
-                    semanticObjectsData,
-                    appLaunchersData
-                ] = await Promise.race([
-                    Promise.all([
-                        retryFetch(() => fetchTechnicalNames(fioriId, releaseId)),
-                        retryFetch(() => fetchBusinessRoleNames(fioriId, releaseId)),
-                        retryFetch(() => fetchBSPNames(fioriId, releaseId)),
-                        retryFetch(() => fetchTechnicalCatalogs(fioriId, releaseId)),
-                        retryFetch(() => fetchSpaces(fioriId, releaseId)),
-                        retryFetch(() => fetchPages(fioriId, releaseId)),
-                        retryFetch(() => fetchRelatedApps(fioriId, releaseId)),
-                        retryFetch(() => fetchSemanticObjects(fioriId, releaseId)),
-                        retryFetch(() => fetchAppLaunchers(fioriId, releaseId))
-                    ]),
-                    timeoutPromise
-                ]);
+                // Progressive rendering: fetch and display each section as soon as it's ready
+                const fetchAndDisplay = async (endpoint, fetchFn, displayFn) => {
+                    try {
+                        const data = await Promise.race([
+                            cachedFetch(endpoint, fetchFn, fioriId, releaseId),
+                            timeoutPromise
+                        ]);
+                        displayFn(data);
+                    } catch (e) {
+                        // Optionally show error in section
+                    }
+                };
 
-                // Display the results
-                displayTechnicalNames(technicalNameData);
-                displayBusinessRoles(businessRoleData);
-                displayBSPNames(bspNameData);
-                displayTechnicalCatalogs(technicalCatalogData);
-                displaySpaces(spacesData);
-                displayPages(pagesData);
-                displayRelatedApps(relatedAppsData);
-                displaySemanticObjects(semanticObjectsData);
-                displayAppLaunchers(appLaunchersData);
+                fetchAndDisplay('technicalNames', () => retryFetch(() => fetchTechnicalNames(fioriId, releaseId)), displayTechnicalNames);
+                fetchAndDisplay('businessRoles', () => retryFetch(() => fetchBusinessRoleNames(fioriId, releaseId)), displayBusinessRoles);
+                fetchAndDisplay('bspNames', () => retryFetch(() => fetchBSPNames(fioriId, releaseId)), displayBSPNames);
+                fetchAndDisplay('technicalCatalogs', () => retryFetch(() => fetchTechnicalCatalogs(fioriId, releaseId)), displayTechnicalCatalogs);
+                fetchAndDisplay('spaces', () => retryFetch(() => fetchSpaces(fioriId, releaseId)), displaySpaces);
+                fetchAndDisplay('pages', () => retryFetch(() => fetchPages(fioriId, releaseId)), displayPages);
+                fetchAndDisplay('relatedApps', () => retryFetch(() => fetchRelatedApps(fioriId, releaseId)), displayRelatedApps);
+                fetchAndDisplay('semanticObjects', () => retryFetch(() => fetchSemanticObjects(fioriId, releaseId)), displaySemanticObjects);
+                fetchAndDisplay('appLaunchers', () => retryFetch(() => fetchAppLaunchers(fioriId, releaseId)), displayAppLaunchers);
 
-                // Hide loading, show results
+                // Hide loading, show results as soon as any section is ready
                 document.getElementById('loading').style.display = 'none';
                 document.getElementById('results').style.display = 'block';
             } catch (error) {
@@ -468,16 +450,31 @@
             }
         });
 
-        async function retryFetch(fetchFn, maxRetries = 3) {
+        async function retryFetch(fetchFn, maxRetries = 1) {
             for (let i = 0; i < maxRetries; i++) {
                 try {
                     return await fetchFn();
                 } catch (error) {
                     if (i === maxRetries - 1) throw error;
-                    // Wait before retrying (exponential backoff)
                     await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
                 }
             }
+        }
+
+        // Simple in-memory cache for API results
+        const apiCache = {};
+        function getCacheKey(endpoint, fioriId, releaseId) {
+            return `${endpoint}|${fioriId}|${releaseId}`;
+        }
+
+        async function cachedFetch(endpoint, fetchFn, fioriId, releaseId) {
+            const key = getCacheKey(endpoint, fioriId, releaseId);
+            if (apiCache[key]) {
+                return apiCache[key];
+            }
+            const result = await fetchFn();
+            apiCache[key] = result;
+            return result;
         }
 
         // Enhance error display
