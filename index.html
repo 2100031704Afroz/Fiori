@@ -561,16 +561,14 @@
                 return;
             }
 
-            // Create a list of just the semantic object names for easy copying
-            const objectsOnly = semanticObjects.map(item => item.SemanticObject);
-            // Remove duplicates
-            const uniqueObjects = [...new Set(objectsOnly)];
-            textContainer.textContent = uniqueObjects.join('\n');
+            // Create a list of key-value pairs for easy copying
+            const keyValuePairs = semanticObjects.map(item => `${item.SemanticObject} : ${item.SemanticAction}`);
+            textContainer.textContent = keyValuePairs.join('\n');
             textContainer.style.display = 'block';
 
             // Add copy button functionality
             document.getElementById('copySemanticObjects').addEventListener('click', async () => {
-                const success = await copyToClipboard(uniqueObjects.join('\n'));
+                const success = await copyToClipboard(keyValuePairs.join('\n'));
                 if (success) {
                     const successIndicator = document.getElementById('copySemanticObjectsSuccess');
                     successIndicator.style.display = 'inline';
@@ -578,16 +576,12 @@
                 }
             });
 
-            // Display detailed items
+            // Display detailed items as key-value pairs
             semanticObjects.forEach(item => {
                 const div = document.createElement('div');
                 div.className = 'data-item';
 
-                let html = `<p><strong>${item.SemanticObject}</strong></p>`;
-
-                if (item.SemanticAction) {
-                    html += `<p class="data-item-details">Action: ${item.SemanticAction}</p>`;
-                }
+                let html = `<p><strong>${item.SemanticObject}</strong> : <strong>${item.SemanticAction}</strong></p>`;
 
                 if (item.MappingSignatureKeyVal) {
                     html += `<p class="data-item-details">Parameters: ${item.MappingSignatureKeyVal}</p>`;
